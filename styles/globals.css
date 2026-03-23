@@ -3,6 +3,7 @@
   --warm: #f2ead8;
   --sand: #e8d9be;
   --terracotta: #c4603a;
+  --terracotta: #c4603a;
   --deep-terra: #9e3f22;
   --gold: #c9972b;
   --gold-light: #e8c46a;
@@ -1302,4 +1303,25 @@ nav {
 button:focus-visible {
   outline: 2px solid var(--gold);
   outline-offset: 2px;
+}
+
+.resto-card-skeleton {
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+.card-color-skeleton {
+    background: linear-gradient(135deg, #1e1610, #2a1e14) !important;
+    animation: skeleton-pulse 1.5s ease infinite;
+}
+
+.skeleton-line {
+    background: rgba(250, 246, 239, 0.08);
+    border-radius: 4px;
+    animation: skeleton-pulse 1.5s ease infinite;
+}
+
+@keyframes skeleton-pulse {
+    0%, 100% { opacity: 0.5; }
+    50%       { opacity: 1; }
 }
