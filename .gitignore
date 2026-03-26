@@ -46,3 +46,9 @@ scrapingmaps/
 
 backend/__pycache__/
 *.pkl
+
+
+# Ngrok files
+ngrok.exe
+ngrok.log
+.ngrok2/
