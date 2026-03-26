@@ -3,524 +3,589 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import ChatPanel, { type Restaurant } from "@/components/ChatPanel";
 import ProfileOverlay from "@/components/ProfileOverlay";
-import { FaBeer } from 'react-icons/fa'
-// ─── Constants ───────────────────────────────────────────────────────────────
+
+// ─── Config ───────────────────────────────────────────────────────────────────
 const FILTER_PILLS = [
-    { id: "Sunset & View",     icon: "🌅", label: "Sunset View" },
-    { id: "Work from Cafe",    icon: "💻", label: "Work Café" },
-    { id: "Budget Friendly",   icon: "💰", label: "Budget" },
-    { id: "Family Friendly",   icon: "👨‍👩‍👧", label: "Family" },
-    { id: "Vibrant Nightlife", icon: "🎶", label: "Nightlife" },
-    { id: "Romantic & Cozy",   icon: "🕯️", label: "Romantic" },
+    { id: "Sunset & View",     icon: "🌅", label: "Sunset",    color: "#c9972b" },
+    { id: "Work from Cafe",    icon: "💻", label: "Work Café", color: "#4ade80" },
+    { id: "Budget Friendly",   icon: "💰", label: "Budget",    color: "#94a3b8" },
+    { id: "Family Friendly",   icon: "👨‍👩‍👧", label: "Family",   color: "#60a5fa" },
+    { id: "Vibrant Nightlife", icon: "🎶", label: "Nightlife", color: "#f87171" },
+    { id: "Romantic & Cozy",   icon: "🕯️", label: "Romantic",  color: "#f472b6" },
 ];
 
-const CARD_GRADIENTS = [
-    "linear-gradient(135deg,#3d1f0f,#6b3520)",
-    "linear-gradient(135deg,#1a2f1a,#2d5020)",
-    "linear-gradient(135deg,#1a2a35,#203a50)",
-    "linear-gradient(135deg,#2a1a3a,#4a2060)",
-    "linear-gradient(135deg,#35200a,#5a3815)",
-    "linear-gradient(135deg,#1a2535,#1a3545)",
-];
+const KAT_COLOR: Record<string, string> = {
+    "Sunset & View":     "#c9972b",
+    "Work from Cafe":    "#4ade80",
+    "Budget Friendly":   "#94a3b8",
+    "Family Friendly":   "#60a5fa",
+    "Vibrant Nightlife": "#f87171",
+    "Romantic & Cozy":   "#f472b6",
+    "General Chill":     "#c4603a",
+};
 
-function getEmoji(k: string) {
-    if (k.includes("Sunset"))    return "🌅";
-    if (k.includes("Work"))      return "☕";
-    if (k.includes("Nightlife")) return "🎶";
-    if (k.includes("Family"))    return "🍽️";
-    if (k.includes("Budget"))    return "🥘";
-    if (k.includes("Romantic"))  return "🕯️";
-    return "🌿";
+function markerColor(kategori: string): string {
+    for (const [k, v] of Object.entries(KAT_COLOR)) {
+        if (kategori.includes(k)) return v;
+    }
+    return "#c4603a";
 }
 
-function fmtReviews(n: number) {
-    return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-}
+function fmtN(n: number) { return n >= 1000 ? `${(n/1000).toFixed(1)}k` : String(n); }
 
-// ─── Jawgs Map Component (Leaflet-based) ─────────────────────────────────────
-interface BaliMapProps {
+// ─── BaliMap ──────────────────────────────────────────────────────────────────
+function BaliMap({ restaurants, focused, activeCategory, onMarkerClick }: {
     restaurants: Restaurant[];
-    focusedRestaurant: Restaurant | null;
+    focused: Restaurant | null;
+    activeCategory: string | null;
     onMarkerClick: (r: Restaurant) => void;
-}
+}) {
+    const divRef    = useRef<HTMLDivElement>(null);
+    const mapRef    = useRef<any>(null);
+    const markersRef= useRef<any[]>([]);
+    const LRef      = useRef<any>(null);
+    const initDone  = useRef(false);
 
-function BaliMap({ restaurants, focusedRestaurant, onMarkerClick }: BaliMapProps) {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const mapRef       = useRef<any>(null);
-    const markersRef   = useRef<any[]>([]);
-    const LRef         = useRef<any>(null); // Leaflet instance
-
-    // Init Leaflet + Jawgs once
+    // Init Leaflet once
     useEffect(() => {
-        if (!containerRef.current || mapRef.current) return;
+        if (initDone.current) return;
+        initDone.current = true;
 
-        const JAWGS_TOKEN = process.env.NEXT_PUBLIC_JAWGS_TOKEN || "";
+        // Inject Leaflet CSS
+        if (!document.getElementById("lf-css")) {
+            const l = document.createElement("link");
+            l.id   = "lf-css";
+            l.rel  = "stylesheet";
+            l.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+            document.head.appendChild(l);
+        }
 
-        // Load Leaflet CSS
-        const link = document.createElement("link");
-        link.rel  = "stylesheet";
-        link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-        document.head.appendChild(link);
-
-        // Load Leaflet JS
-        const script = document.createElement("script");
-        script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-        script.onload = () => {
+        const s = document.createElement("script");
+        s.src   = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+        s.onload = () => {
             const L = (window as any).L;
             LRef.current = L;
 
-            const baliBounds = L.latLngBounds(
-                [-8.98, 114.4],
-                [-8.00, 115.8]
+            if (!divRef.current) return;
 
-            );
-
-            const map = L.map(containerRef.current!, {
-                center:      [-8.5, 115.2],
-                zoom:        5,
-                minZoom: 9,
-                maxBounds: baliBounds,
-                maxBoundsViscosity: 1.0,
-                zoomControl: false,
-                attributionControl: false,
-            });
-
-            // Jawgs Dark tile layer
-            // Kalau tidak punya token → fallback ke OpenStreetMap Carto Dark
-            const tileUrl = JAWGS_TOKEN
-                ? `https://tile.jawg.io/jawg-dark/{z}/{x}/{y}{r}.png?access-token=${JAWGS_TOKEN}`
+            const TOKEN = process.env.NEXT_PUBLIC_JAWGS_TOKEN ?? "";
+            const tile  = TOKEN
+                ? `https://tile.jawg.io/jawg-dark/{z}/{x}/{y}{r}.png?access-token=${TOKEN}`
                 : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
 
-            const attribution = JAWGS_TOKEN
-                ? '<a href="https://www.jawg.io">© Jawg Maps</a>'
-                : '© <a href="https://carto.com">CARTO</a>';
+            const map = L.map(divRef.current, {
+                center:              [-8.4095, 115.19],
+                zoom:                10,
+                minZoom:             9,
+                maxZoom:             17,
+                maxBounds:           [[-9.1, 114.3], [-7.9, 116.0]],
+                maxBoundsViscosity:  1.0,
+                zoomControl:         false,
+                attributionControl:  false,
+            });
 
-            L.tileLayer(tileUrl, {
-                attribution,
-                maxZoom: 19,
-                subdomains: "abcd",
-            }).addTo(map);
+            L.tileLayer(tile, { maxZoom: 19, subdomains: "abcd" }).addTo(map);
+            L.control.zoom({ position: "bottomright" }).addTo(map);
 
-            // Zoom control kanan atas
-            L.control.zoom({ position: "topright" }).addTo(map);
+            // Mini attribution
+            L.control.attribution({ position: "bottomleft", prefix: false })
+                .addAttribution(TOKEN ? '© <a href="https://jawg.io">Jawg</a>' : '© <a href="https://carto.com">CARTO</a>')
+                .addTo(map);
 
             mapRef.current = map;
         };
-        document.head.appendChild(script);
+        document.head.appendChild(s);
 
         return () => {
-            markersRef.current.forEach(m => m.remove());
-            mapRef.current?.remove();
-            mapRef.current = null;
+            markersRef.current.forEach(m => m?.remove?.());
+            mapRef.current?.remove?.();
+            mapRef.current  = null;
+            initDone.current = false;
         };
-    }, []);
+    }, []); // eslint-disable-line
 
-    // Update markers saat restaurants berubah
+    // Redraw markers
     useEffect(() => {
-        if (!mapRef.current || !LRef.current) return;
-        const L   = LRef.current;
-        const map = mapRef.current;
+        const L = LRef.current, map = mapRef.current;
+        if (!L || !map) return;
 
-        // Hapus marker lama
         markersRef.current.forEach(m => map.removeLayer(m));
         markersRef.current = [];
-
         if (!restaurants.length) return;
 
-        restaurants.forEach((r) => {
-            // Custom div icon
+        const color = activeCategory ? (KAT_COLOR[activeCategory] ?? "#c4603a") : "#c4603a";
+        const hex   = color.replace("#", "");
+
+        restaurants.forEach(r => {
+            const dot = markerColor(r.kategori);
             const icon = L.divIcon({
                 className: "",
-                html: `<div class="lf-marker"><div class="lf-dot"></div><div class="lf-pulse"></div></div>`,
-                iconSize:   [20, 20],
-                iconAnchor: [10, 10],
+                html: `<span style="
+                    display:block;width:13px;height:13px;border-radius:50%;
+                    background:${dot};border:2.5px solid rgba(255,255,255,0.85);
+                    box-shadow:0 0 0 3px ${dot}55,0 2px 8px rgba(0,0,0,0.5);
+                    animation:lfPulse 2.5s ease infinite;
+                "></span>`,
+                iconSize:   [13, 13],
+                iconAnchor: [6, 6],
             });
 
             const marker = L.marker([r.lat, r.lng], { icon });
-
-            // Popup
             marker.bindPopup(`
-                <div class="lf-popup">
-                    <div class="lf-pop-name">${r.nama}</div>
-                    <div class="lf-pop-meta">⭐${r.rating} · ${fmtReviews(r.total_review)} ulasan · ${r.price_range}</div>
-                    <div class="lf-pop-cat">${r.kategori.split("|")[0].trim()}</div>
+                <div style="padding:10px 12px;min-width:170px">
+                    <div style="font-family:'Cormorant Garamond',serif;font-size:14px;font-weight:600;color:#faf6ef;margin-bottom:3px">${r.nama}</div>
+                    <div style="font-size:11px;color:rgba(250,246,239,.5);margin-bottom:5px">⭐${r.rating} · ${fmtN(r.total_review)} ulasan · ${r.price_range}</div>
+                    <div style="font-size:10px;color:${dot};background:${dot}22;border-radius:100px;padding:2px 8px;display:inline-block">${r.kategori.split("|")[0].trim()}</div>
                 </div>
-            `, {
-                closeButton:   false,
-                className:     "lf-popup-wrap",
-                maxWidth:      220,
-                autoPanPadding: [20, 20],
-            });
+            `, { closeButton: false, className: "lf-popup-wrap", maxWidth: 220 });
 
-            marker.on("click", () => {
-                onMarkerClick(r);
-                marker.openPopup();
-            });
-
+            marker.on("click", () => { onMarkerClick(r); marker.openPopup(); });
             marker.addTo(map);
             markersRef.current.push(marker);
         });
 
-        // Fit bounds ke semua marker
+        // Fit bounds
         if (restaurants.length > 1) {
-            const bounds = L.latLngBounds(restaurants.map(r => [r.lat, r.lng]));
-            map.fitBounds(bounds, { padding: [60, 60], maxZoom: 14, animate: true });
+            const bounds = L.latLngBounds(restaurants.map((r: Restaurant) => [r.lat, r.lng]));
+            map.fitBounds(bounds, { padding: [80, 80], maxZoom: 14, animate: true, duration: 0.8 });
         } else if (restaurants.length === 1) {
-            map.setView([restaurants[0].lat, restaurants[0].lng], 15, { animate: true });
+            map.flyTo([restaurants[0].lat, restaurants[0].lng], 15, { duration: 0.8 });
         }
-    }, [restaurants, onMarkerClick]);
+    }, [restaurants, activeCategory, onMarkerClick]);
 
-    // Fly to focused restaurant
+    // Fly to focused
     useEffect(() => {
-        if (!mapRef.current || !focusedRestaurant) return;
-        mapRef.current.flyTo(
-            [focusedRestaurant.lat, focusedRestaurant.lng],
-            15,
-            { animate: true, duration: 1 }
-        );
-        // Buka popup marker yang sesuai
+        if (!mapRef.current || !focused) return;
+        mapRef.current.flyTo([focused.lat, focused.lng], 16, { duration: 1 });
         markersRef.current.forEach((m, i) => {
-            if (restaurants[i]?.id === focusedRestaurant.id) m.openPopup();
+            if (restaurants[i]?.id === focused.id) m.openPopup();
         });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [focusedRestaurant]);
+    }, [focused]); // eslint-disable-line
 
     return (
         <>
-            {/* Leaflet & custom map styles */}
             <style>{`
-                /* Override Leaflet default styles agar cocok dengan tema */
-                .leaflet-container { background: #0d1a12 !important; font-family: "DM Sans", sans-serif !important; }
-                .leaflet-control-zoom { border: none !important; }
-                .leaflet-control-zoom a {
-                    background: rgba(22,17,13,0.9) !important;
-                    border: 1px solid rgba(250,246,239,0.12) !important;
-                    color: rgba(250,246,239,0.6) !important;
-                    width: 28px !important; height: 28px !important;
-                    line-height: 26px !important; font-size: 16px !important;
+                @keyframes lfPulse {
+                    0%,100%{box-shadow:0 0 0 3px var(--mc,#c4603a55),0 2px 8px rgba(0,0,0,.5)}
+                    50%{box-shadow:0 0 0 6px var(--mc,#c4603a22),0 2px 8px rgba(0,0,0,.5)}
                 }
-                .leaflet-control-zoom a:hover { color: #faf6ef !important; background: rgba(196,96,58,0.2) !important; }
-                .leaflet-control-zoom-in  { border-bottom: 1px solid rgba(250,246,239,0.1) !important; }
-                .leaflet-control-attribution {
-                    background: rgba(22,17,13,0.7) !important;
-                    color: rgba(250,246,239,0.3) !important; font-size: 9px !important;
-                    backdrop-filter: blur(8px);
+                .leaflet-container{background:#0d1412!important}
+                .leaflet-control-zoom{border:none!important;margin:0 12px 12px 0!important}
+                .leaflet-control-zoom a{
+                    background:rgba(22,17,13,.9)!important;
+                    border:1px solid rgba(250,246,239,.12)!important;
+                    color:rgba(250,246,239,.6)!important;
+                    width:30px!important;height:30px!important;
+                    line-height:28px!important;font-size:16px!important;
                 }
-                .leaflet-control-attribution a { color: rgba(250,246,239,0.4) !important; }
-
-                /* Custom markers */
-                .lf-marker { position: relative; width: 20px; height: 20px; cursor: pointer; }
-                .lf-dot {
-                    position: absolute; top: 4px; left: 4px;
-                    width: 12px; height: 12px; border-radius: 50%;
-                    background: #c4603a;
-                    border: 2px solid rgba(250,246,239,0.9);
-                    box-shadow: 0 2px 8px rgba(196,96,58,0.7);
-                    transition: transform 0.2s;
-                    z-index: 2;
+                .leaflet-control-zoom a:hover{color:#faf6ef!important;background:rgba(196,96,58,.2)!important}
+                .leaflet-control-zoom-in{border-bottom:1px solid rgba(250,246,239,.1)!important;border-radius:8px 8px 0 0!important}
+                .leaflet-control-zoom-out{border-radius:0 0 8px 8px!important}
+                .leaflet-control-attribution{
+                    background:rgba(22,17,13,.6)!important;
+                    color:rgba(250,246,239,.25)!important;
+                    font-size:9px!important;
+                    margin:0 0 6px 6px!important;
+                    border-radius:6px!important;
                 }
-                .lf-marker:hover .lf-dot { transform: scale(1.5); }
-                .lf-pulse {
-                    position: absolute; inset: -2px; border-radius: 50%;
-                    border: 1.5px solid #c4603a;
-                    animation: lf-ripple 2.5s ease-out infinite;
+                .leaflet-control-attribution a{color:rgba(250,246,239,.35)!important}
+                .lf-popup-wrap .leaflet-popup-content-wrapper{
+                    background:rgba(18,13,10,.97)!important;
+                    border:1px solid rgba(250,246,239,.14)!important;
+                    border-radius:12px!important;
+                    box-shadow:0 12px 40px rgba(0,0,0,.7)!important;
+                    padding:0!important;
                 }
-                @keyframes lf-ripple {
-                    0%   { transform: scale(1); opacity: 0.6; }
-                    100% { transform: scale(2.8); opacity: 0; }
-                }
-
-                /* Custom popup */
-                .lf-popup-wrap .leaflet-popup-content-wrapper {
-                    background: rgba(22,17,13,0.97) !important;
-                    border: 1px solid rgba(250,246,239,0.15) !important;
-                    border-radius: 12px !important;
-                    box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
-                    padding: 0 !important;
-                    backdrop-filter: blur(20px);
-                }
-                .lf-popup-wrap .leaflet-popup-content { margin: 0 !important; }
-                .lf-popup-wrap .leaflet-popup-tip-container { display: none !important; }
-                .lf-popup {
-                    padding: 10px 14px;
-                    min-width: 160px;
-                }
-                .lf-pop-name {
-                    font-family: "Cormorant Garamond", serif;
-                    font-size: 14px; font-weight: 600;
-                    color: #faf6ef; margin-bottom: 3px;
-                }
-                .lf-pop-meta { font-size: 11px; color: rgba(250,246,239,0.5); margin-bottom: 5px; }
-                .lf-pop-cat {
-                    font-size: 10px; color: #e8c46a;
-                    background: rgba(201,151,43,0.15);
-                    border-radius: 100px; padding: 2px 8px;
-                    display: inline-block;
-                }
-
-                /* Cards grid */
-                .cards-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-                    gap: 12px;
-                    padding: 0 48px 48px;
-                    position: relative; z-index: 50;
-                }
-                @media (max-width: 768px) {
-                    .cards-grid { padding: 0 16px 32px; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-                }
-
-                /* Selected card detail */
-                .selected-card-overlay {
-                    position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
-                    z-index: 300;
-                    background: rgba(22,17,13,0.97);
-                    border: 1px solid rgba(201,151,43,0.3);
-                    border-radius: 16px; padding: 16px 20px;
-                    display: flex; gap: 14px; align-items: center;
-                    backdrop-filter: blur(24px);
-                    box-shadow: 0 20px 60px rgba(0,0,0,0.7);
-                    animation: slide-up 0.3s ease both;
-                    max-width: min(520px, 92vw);
-                }
-                .selected-card-close {
-                    position: absolute; top: 8px; right: 10px;
-                    background: none; border: none;
-                    color: rgba(250,246,239,0.35); cursor: pointer;
-                    font-size: 16px; line-height: 1; padding: 2px;
-                }
-                .selected-card-close:hover { color: #faf6ef; }
-                .ask-ai-btn {
-                    margin-left: auto; flex-shrink: 0;
-                    background: linear-gradient(135deg, #c4603a, #c9972b);
-                    border: none; border-radius: 20px; padding: 8px 14px;
-                    color: #faf6ef; font-size: 12px; font-weight: 500;
-                    cursor: pointer; white-space: nowrap;
-                    font-family: "DM Sans", sans-serif;
-                    transition: transform 0.15s, box-shadow 0.15s;
-                }
-                .ask-ai-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(196,96,58,0.4); }
+                .lf-popup-wrap .leaflet-popup-content{margin:0!important}
+                .lf-popup-wrap .leaflet-popup-tip-container{display:none!important}
             `}</style>
-
-            <div
-                ref={containerRef}
-                className="map-canvas"
-                style={{ position: "absolute", inset: 0, zIndex: 0 }}
-            />
+            <div ref={divRef} style={{ position:"absolute", inset:0, zIndex:0 }} />
         </>
     );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Page ─────────────────────────────────────────────────────────────────────
 export default function HomePage() {
-    const [activeNav, setActiveNav]           = useState("explore");
-    const [activePills, setActivePills]       = useState<Set<string>>(new Set());
-    const [profileOpen, setProfileOpen]       = useState(false);
-    const [searchValue, setSearchValue]       = useState("");
-    const [chatTrigger, setChatTrigger]       = useState<string | null>(null);
-    const [cards, setCards]                   = useState<Restaurant[]>([]);
-    const [cardsLoading, setCardsLoading]     = useState(true);
-    const [mapRestaurants, setMapRestaurants] = useState<Restaurant[]>([]);
-    const [focusedResto, setFocusedResto]     = useState<Restaurant | null>(null);
-    const [selectedCard, setSelectedCard]     = useState<Restaurant | null>(null);
+    const [activeTab, setActiveTab]       = useState<"explore"|"trending"|"itinerary">("explore");
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    const [profileOpen, setProfileOpen]   = useState(false);
+    const [activeCat, setActiveCat]       = useState<string|null>(null);
+    const [searchVal, setSearchVal]       = useState("");
+    const [chatTrigger, setChatTrigger]   = useState<string|null>(null);
+    const [mapResto, setMapResto]         = useState<Restaurant[]>([]);
+    const [focused, setFocused]           = useState<Restaurant|null>(null);
+    const [selected, setSelected]         = useState<Restaurant|null>(null);
+    const [loading, setLoading]           = useState(true);
+    const [stats, setStats]               = useState({ total: 1352, avg: 4.55, regencies: 9 });
 
-    useEffect(() => { loadCards(); }, []);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    useEffect(() => { loadCards(); }, [activePills]);
+    // Load markers on init + category change
+    useEffect(() => { loadMarkers(); }, []); // eslint-disable-line
+    useEffect(() => { if (activeCat !== null) loadMarkers(); }, [activeCat]); // eslint-disable-line
 
-    async function loadCards() {
-        setCardsLoading(true);
+    async function loadMarkers() {
+        setLoading(true);
         try {
-            const qs = new URLSearchParams({ min_rating: "4.3", min_review: "100", top_n: "12" });
-            if (activePills.size === 1) qs.set("kategori", [...activePills][0]);
-            const res = await fetch(`/api/restaurants?${qs}`);
-            if (res.ok) {
-                const data: Restaurant[] = await res.json();
-                setCards(data);
-                setMapRestaurants(data.slice(0, 24));
-            }
+            const qs = new URLSearchParams({ min_rating:"4.0", min_review:"30", top_n:"40" });
+            if (activeCat) qs.set("kategori", activeCat);
+            const res = await fetch(`/api/restaurant?${qs}`);
+            if (res.ok) setMapResto(await res.json());
         } catch { /* silent */ }
-        finally { setCardsLoading(false); }
+        finally { setLoading(false); }
     }
 
-    const togglePill = (id: string) => {
-        setActivePills(prev => {
-            const next = new Set(prev);
-            if (next.has(id)) { next.delete(id); return next; }
-            next.clear(); next.add(id); return next;
-        });
-    };
+    const toggleCat = (id: string) => setActiveCat(p => p === id ? null : id);
+    const triggerSearch = () => { if (searchVal.trim()) { setChatTrigger(searchVal.trim()); setSearchVal(""); } };
 
-    const triggerSearch = () => {
-        if (searchValue.trim()) { setChatTrigger(searchValue.trim()); setSearchValue(""); }
-    };
-
-    const handleMarkerClick = useCallback((r: Restaurant) => setSelectedCard(r), []);
-
-    const handleCardClick = (r: Restaurant) => {
-        setSelectedCard(r);
-        setFocusedResto(r);
-    };
-
-    const handleRestaurantsLoaded = useCallback((data: Restaurant[]) => {
-        setMapRestaurants(data);
-        setCards(data);
+    const onMarkerClick = useCallback((r: Restaurant) => {
+        setSelected(r);
+        setFocused(r);
     }, []);
 
+    const onRestoLoaded = useCallback((data: Restaurant[]) => {
+        setMapResto(data);
+    }, []);
+
+    const onFocusResto = useCallback((r: Restaurant | null) => {
+        setFocused(r);
+        if (r) setSelected(r);
+    }, []);
+
+    const activePill = FILTER_PILLS.find(p => p.id === activeCat);
+
     return (
-        <>
-            <section className="hero" id="heroSection">
+        <div style={{ position:"fixed", inset:0, overflow:"hidden" }}>
+            {/* ── Leaflet map — absolute full ── */}
+            <BaliMap
+                restaurants={mapResto}
+                focused={focused}
+                activeCategory={activeCat}
+                onMarkerClick={onMarkerClick}
+            />
 
-                {/* ── Jawgs Map ── */}
-                <BaliMap
-                    restaurants={mapRestaurants}
-                    focusedRestaurant={focusedResto}
-                    onMarkerClick={handleMarkerClick}
-                />
-
-                {/* Weather */}
-                <div className="weather-widget">
-                    <div className="weather-icon">🌤️</div>
-                    <div>
-                        <div className="weather-temp">29°C</div>
-                        <div className="weather-label">Bali · Now</div>
-                    </div>
-                    <div className="weather-note">☀️ Perfect for beachside dining tonight</div>
+            {/* ── TOPBAR ── */}
+            <header style={{
+                position:"absolute", top:0, left:0, right:0, zIndex:200,
+                display:"flex", alignItems:"center", gap:0,
+                background:"rgba(15,10,8,0.72)", backdropFilter:"blur(20px)",
+                borderBottom:"1px solid rgba(250,246,239,0.08)",
+                height:52,
+            }}>
+                {/* Logo */}
+                <div style={{ display:"flex", alignItems:"center", gap:9, padding:"0 20px", borderRight:"1px solid rgba(250,246,239,0.08)", height:"100%", flexShrink:0 }}>
+                    <div style={{
+                        width:28, height:28, borderRadius:8,
+                        background:"linear-gradient(135deg,#c4603a,#c9972b)",
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        fontSize:14, boxShadow:"0 2px 12px rgba(196,96,58,.4)",
+                    }}>🌿</div>
+                    <span style={{ fontFamily:"Cormorant Garamond,serif", fontSize:17, fontWeight:600, color:"#faf6ef", letterSpacing:"0.3px" }}>
+                        Bali<span style={{ color:"#c9972b" }}>Bites</span> AI
+                    </span>
                 </div>
 
-                {/* Nav */}
-                <nav>
-                    <div className="logo">
-                        <div className="logo-mark">🌿</div>
-                        <div className="logo-text">Bali<span>Bites</span> AI</div>
-                    </div>
-                    
-                    <button className="nav-cta" onClick={() => setProfileOpen(true)}>🔮 Taste Profile</button>
-                </nav>
+                {/* Tabs — Explore / Trending / Itinerary */}
+                <div style={{ display:"flex", height:"100%", alignItems:"center", padding:"0 8px", gap:2 }}>
+                    {(["explore","trending","itinerary"] as const).map(t => (
+                        <button key={t} onClick={() => setActiveTab(t)} style={{
+                            padding:"0 16px", height:34, borderRadius:8, border:"none",
+                            background: activeTab===t ? "rgba(196,96,58,0.2)" : "transparent",
+                            color: activeTab===t ? "#faf6ef" : "rgba(250,246,239,0.45)",
+                            fontSize:13, cursor:"pointer", transition:"all .2s",
+                            borderBottom: activeTab===t ? "2px solid #c4603a" : "2px solid transparent",
+                            fontFamily:"DM Sans,sans-serif", letterSpacing:"0.2px",
+                        }}>{t[0].toUpperCase()+t.slice(1)}</button>
+                    ))}
+                </div>
 
-                {/* Hero content */}
-                <div className="hero-content">
-                    <div className="eyebrow">
-                        <span className="eyebrow-dot"></span>AI-Powered · 1,352 Real Restaurants
+                {/* Spacer */}
+                <div style={{ flex:1 }} />
+
+                {/* Weather pill */}
+                <div style={{
+                    display:"flex", alignItems:"center", gap:8, padding:"0 14px",
+                    borderRight:"1px solid rgba(250,246,239,0.08)", height:"100%",
+                    fontSize:12, color:"rgba(250,246,239,0.6)",
+                }}>
+                    <span style={{ fontSize:16 }}>🌤️</span>
+                    <span style={{ fontFamily:"Cormorant Garamond,serif", fontSize:16, color:"#faf6ef" }}>29°C</span>
+                    <span style={{ color:"rgba(201,151,43,0.8)", fontStyle:"italic", fontSize:11 }}>Perfect for dining tonight</span>
+                </div>
+
+                {/* Taste Profile */}
+                <button onClick={() => setProfileOpen(true)} style={{
+                    margin:"0 8px", padding:"7px 16px", borderRadius:100,
+                    background:"linear-gradient(135deg,#c9972b,#c4603a)", border:"none",
+                    color:"#faf6ef", fontSize:12, fontWeight:500, cursor:"pointer",
+                    fontFamily:"DM Sans,sans-serif", whiteSpace:"nowrap",
+                    boxShadow:"0 2px 12px rgba(201,151,43,.3)",
+                }}>🔮 Taste Profile</button>
+
+                {/* Settings ⚙ */}
+                <button onClick={() => setSettingsOpen(p => !p)} style={{
+                    width:36, height:36, borderRadius:8, border:"1px solid rgba(250,246,239,0.1)",
+                    background: settingsOpen ? "rgba(250,246,239,0.08)" : "transparent",
+                    color:"rgba(250,246,239,0.5)", fontSize:17, cursor:"pointer",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    marginRight:12, transition:"all .2s",
+                }}>⚙</button>
+            </header>
+
+            {/* ── Settings dropdown ── */}
+            {settingsOpen && (
+                <div style={{
+                    position:"absolute", top:60, right:12, zIndex:300,
+                    background:"rgba(18,13,10,0.97)", border:"1px solid rgba(250,246,239,0.12)",
+                    borderRadius:14, padding:"14px 0", width:220,
+                    backdropFilter:"blur(24px)", boxShadow:"0 20px 60px rgba(0,0,0,.7)",
+                    animation:"fadeUp .2s ease",
+                }}>
+                    {[
+                        { icon:"🗺️", label:"Map style", sub:"Dark (Jawg)" },
+                        { icon:"🔔", label:"Notifications", sub:"On" },
+                        { icon:"🌐", label:"Language", sub:"ID / EN" },
+                        { icon:"📊", label:"Data export", sub:"CSV / JSON" },
+                        { icon:"🤖", label:"AI model", sub:"Gemini 2.5 Flash" },
+                    ].map(item => (
+                        <div key={item.label} style={{
+                            display:"flex", alignItems:"center", gap:12, padding:"9px 16px",
+                            cursor:"pointer", transition:"background .15s",
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background="rgba(250,246,239,0.05)")}
+                        onMouseLeave={e => (e.currentTarget.style.background="transparent")}
+                        >
+                            <span style={{ fontSize:16 }}>{item.icon}</span>
+                            <div>
+                                <div style={{ fontSize:13, color:"#faf6ef" }}>{item.label}</div>
+                                <div style={{ fontSize:10, color:"rgba(250,246,239,0.35)", marginTop:1 }}>{item.sub}</div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* ── LEFT PANEL ── */}
+            <aside style={{
+                position:"absolute", top:52, left:0, bottom:0, zIndex:100,
+                width:300, display:"flex", flexDirection:"column",
+                background:"rgba(10,7,5,0.65)", backdropFilter:"blur(18px)",
+                borderRight:"1px solid rgba(250,246,239,0.07)",
+            }}>
+                {/* Hero text */}
+                <div style={{ padding:"24px 24px 16px" }}>
+                    <div style={{
+                        display:"inline-flex", alignItems:"center", gap:6,
+                        background:"rgba(201,151,43,0.1)", border:"1px solid rgba(201,151,43,0.22)",
+                        borderRadius:100, padding:"4px 12px", fontSize:10,
+                        color:"#e8c46a", letterSpacing:"1px", textTransform:"uppercase",
+                        marginBottom:14,
+                    }}>
+                        <span style={{ width:5, height:5, borderRadius:"50%", background:"#c9972b", display:"inline-block" }}></span>
+                        AI-Powered · {stats.total.toLocaleString()} Restaurants
                     </div>
-                    <h1>Discover your next <em>perfect</em> <span className="highlight">Bali meal</span></h1>
-                    <p className="hero-sub">
-                        Hyper-personal dining recommendations powered by local expertise,
-                        real-time context & AI that actually understands your cravings.
+                    <h1 style={{
+                        fontFamily:"Cormorant Garamond,serif", fontSize:32, fontWeight:300,
+                        lineHeight:1.1, color:"#faf6ef", marginBottom:10,
+                    }}>
+                        Discover your<br/>next <em style={{ color:"#e8c46a" }}>perfect</em><br/>
+                        <span style={{ color:"#c4603a" }}>Bali meal</span>
+                    </h1>
+                    <p style={{ fontSize:12, lineHeight:1.6, color:"rgba(250,246,239,.45)", fontWeight:300, marginBottom:0 }}>
+                        Hyper-personal dining powered by local expertise & AI.
                     </p>
+                </div>
 
-                    <div className="filter-bar">
+                {/* Search */}
+                <div style={{ padding:"0 16px 16px", display:"flex", gap:8 }}>
+                    <input
+                        value={searchVal}
+                        onChange={e => setSearchVal(e.target.value)}
+                        onKeyDown={e => e.key==="Enter" && triggerSearch()}
+                        placeholder="Budget 100k di Canggu..."
+                        style={{
+                            flex:1, background:"rgba(250,246,239,0.06)",
+                            border:"1px solid rgba(250,246,239,0.12)", borderRadius:100,
+                            padding:"9px 16px", fontSize:12, color:"#faf6ef",
+                            fontFamily:"DM Sans,sans-serif", outline:"none",
+                        }}
+                    />
+                    <button onClick={triggerSearch} style={{
+                        padding:"9px 16px", background:"linear-gradient(135deg,#c4603a,#9e3f22)",
+                        border:"none", borderRadius:100, color:"#faf6ef",
+                        fontSize:12, cursor:"pointer", fontFamily:"DM Sans,sans-serif",
+                        boxShadow:"0 2px 12px rgba(196,96,58,.4)",
+                    }}>✦</button>
+                </div>
+
+                {/* Category filter */}
+                <div style={{ padding:"0 16px 12px" }}>
+                    <div style={{ fontSize:9, color:"rgba(250,246,239,.3)", letterSpacing:"1.2px", textTransform:"uppercase", marginBottom:8 }}>
+                        Filter kategori
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                        {FILTER_PILLS.map(p => {
+                            const active = activeCat === p.id;
+                            return (
+                                <button key={p.id} onClick={() => toggleCat(p.id)} style={{
+                                    display:"flex", alignItems:"center", gap:6,
+                                    padding:"8px 12px", borderRadius:10, cursor:"pointer",
+                                    border:`1px solid ${active ? p.color : "rgba(250,246,239,0.1)"}`,
+                                    background: active ? `${p.color}22` : "rgba(250,246,239,0.04)",
+                                    color: active ? "#faf6ef" : "rgba(250,246,239,0.55)",
+                                    fontSize:12, fontFamily:"DM Sans,sans-serif",
+                                    transition:"all .2s", textAlign:"left",
+                                    boxShadow: active ? `0 0 12px ${p.color}44` : "none",
+                                }}>
+                                    <span style={{
+                                        width:8, height:8, borderRadius:"50%", flexShrink:0,
+                                        background: active ? p.color : "rgba(250,246,239,0.2)",
+                                    }}></span>
+                                    <span style={{ fontSize:13, marginRight:2 }}>{p.icon}</span>
+                                    {p.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Divider */}
+                <div style={{ height:1, background:"rgba(250,246,239,0.07)", margin:"0 16px" }} />
+
+                {/* Stats */}
+                <div style={{ padding:"14px 20px", display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+                    {[
+                        { num: stats.total.toLocaleString(), label:"Restaurants" },
+                        { num: String(stats.regencies),      label:"Regencies" },
+                        { num: String(stats.avg),            label:"Avg Rating" },
+                    ].map(s => (
+                        <div key={s.label} style={{ textAlign:"center" }}>
+                            <div style={{ fontFamily:"Cormorant Garamond,serif", fontSize:22, fontWeight:600, color:"#e8c46a", lineHeight:1 }}>{s.num}</div>
+                            <div style={{ fontSize:9, color:"rgba(250,246,239,.35)", letterSpacing:"0.8px", textTransform:"uppercase", marginTop:3 }}>{s.label}</div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Divider */}
+                <div style={{ height:1, background:"rgba(250,246,239,0.07)", margin:"0 16px" }} />
+
+                {/* Marker legend */}
+                <div style={{ padding:"12px 20px 8px" }}>
+                    <div style={{ fontSize:9, color:"rgba(250,246,239,.3)", letterSpacing:"1.2px", textTransform:"uppercase", marginBottom:10 }}>
+                        Map legend
+                    </div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                         {FILTER_PILLS.map(p => (
-                            <div key={p.id}
-                                className={`filter-pill ${activePills.has(p.id) ? "active" : ""}`}
-                                onClick={() => togglePill(p.id)}>
-                                <span className="pill-icon">{p.icon}</span>{p.label}
+                            <div key={p.id} style={{ display:"flex", alignItems:"center", gap:8, fontSize:11, color:"rgba(250,246,239,.5)" }}>
+                                <span style={{ width:10, height:10, borderRadius:"50%", background:p.color, flexShrink:0, boxShadow:`0 0 6px ${p.color}88` }}></span>
+                                {p.icon} {p.label}
                             </div>
                         ))}
                     </div>
-
-                    <div className="search-wrap">
-                        <input className="search-input"
-                            placeholder="Where are you? What are you craving?"
-                            value={searchValue}
-                            onChange={e => setSearchValue(e.target.value)}
-                            onKeyDown={e => e.key === "Enter" && triggerSearch()} />
-                        <button className="search-btn" onClick={triggerSearch}>✦ Find</button>
-                    </div>
                 </div>
 
-                <div className="bottom-grad"></div>
+                {/* Spacer */}
+                <div style={{ flex:1 }} />
 
-                {/* Stats */}
-                <div className="stat-float stat-float-1"><div className="stat-num">1,352</div><div className="stat-label">Curated spots</div></div>
-                <div className="stat-float stat-float-2"><div className="stat-num">9</div><div className="stat-label">Regencies</div></div>
-                <div className="stat-float stat-float-3"><div className="stat-num">4.55</div><div className="stat-label">Avg rating</div></div>
-
-                {/* ── Cards Grid ── */}
-                <div style={{ position: "relative", zIndex: 50, paddingTop: 8 }}>
-                    <div style={{ padding: "0 48px 12px", fontSize: 11, color: "rgba(250,246,239,0.35)", letterSpacing: "1px", textTransform: "uppercase" as const, fontWeight: 500 }}>
-                        {activePills.size > 0 ? `✦ ${[...activePills][0]} · Top picks` : "✦ Curated for you · Right now"}
-                    </div>
-                    <div className="cards-grid">
-                        {cardsLoading
-                            ? Array.from({ length: 6 }).map((_, i) => (
-                                <div key={i} className="resto-card resto-card-skeleton">
-                                    <div className="card-img-placeholder card-color-skeleton" />
-                                    <div className="card-body">
-                                        <div className="skeleton-line" style={{ width: "70%", height: 13, marginBottom: 6 }} />
-                                        <div className="skeleton-line" style={{ width: "50%", height: 10 }} />
-                                    </div>
-                                </div>
-                            ))
-                            : cards.map((r, i) => {
-                                const cats = r.kategori.split("|").map(s => s.trim());
-                                return (
-                                    <div key={r.id} className="resto-card"
-                                        style={{ animationDelay: `${i * 0.06}s` }}
-                                        onClick={() => handleCardClick(r)}>
-                                        <div className="card-img-placeholder"
-                                            style={{ background: CARD_GRADIENTS[i % CARD_GRADIENTS.length] }}>
-                                            {getEmoji(r.kategori)}
-                                            <div className="card-badge">{cats[0]}</div>
-                                            {r.rating >= 4.7 && <div className="card-trend">⭐ Top Rated</div>}
-                                        </div>
-                                        <div className="card-body">
-                                            <div className="card-name">{r.nama}</div>
-                                            <div className="card-area">📍 {r.kabupaten}</div>
-                                            <div className="card-meta">
-                                                <div className="card-rating">★ {r.rating}</div>
-                                                <div className="card-price">{r.price_range}</div>
-                                            </div>
-                                            <div className="card-insight">
-                                                {fmtReviews(r.total_review)} ulasan · {r.best_time}
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                    </div>
-                </div>
-
-                {/* Selected restaurant detail */}
-                {selectedCard && (
-                    <div className="selected-card-overlay">
-                        <button className="selected-card-close" onClick={() => setSelectedCard(null)}>×</button>
-                        <div style={{ fontSize: 30, flexShrink: 0 }}>{getEmoji(selectedCard.kategori)}</div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontFamily: "Cormorant Garamond,serif", fontSize: 15, fontWeight: 600, color: "#faf6ef", marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                {selectedCard.nama}
-                            </div>
-                            <div style={{ fontSize: 11, color: "rgba(250,246,239,0.5)", marginBottom: 4 }}>
-                                📍 {selectedCard.kabupaten} · ⭐{selectedCard.rating} · {fmtReviews(selectedCard.total_review)} ulasan
-                            </div>
-                            <div style={{ fontSize: 11, color: "#e8c46a" }}>
-                                {selectedCard.price_range} · {selectedCard.best_time}
-                            </div>
-                            {selectedCard.highlights.length > 0 && (
-                                <div style={{ fontSize: 10, color: "rgba(250,246,239,0.35)", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                    {selectedCard.highlights.slice(0, 3).join(" · ")}
-                                </div>
-                            )}
-                        </div>
-                        <button className="ask-ai-btn"
-                            onClick={() => {
-                                setChatTrigger(`Cerita detail tentang ${selectedCard.nama} di ${selectedCard.kabupaten} — worth it dan tips apa?`);
-                                setSelectedCard(null);
-                            }}>
-                            Ask AI ✦
-                        </button>
+                {/* Loading indicator */}
+                {loading && (
+                    <div style={{ padding:"12px 20px", fontSize:11, color:"rgba(250,246,239,.35)", display:"flex", alignItems:"center", gap:8 }}>
+                        <span style={{ width:6, height:6, borderRadius:"50%", background:"#4ade80", animation:"blink 1s infinite" }}></span>
+                        Loading markers...
                     </div>
                 )}
+            </aside>
 
-                <ProfileOverlay isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
+            {/* ── SELECTED RESTAURANT CARD ── */}
+            {selected && (
+                <div style={{
+                    position:"absolute", bottom:20, left:"50%", transform:"translateX(-50%)",
+                    zIndex:200, background:"rgba(15,10,8,0.97)",
+                    border:`1px solid ${markerColor(selected.kategori)}55`,
+                    borderRadius:16, padding:"14px 18px",
+                    display:"flex", gap:14, alignItems:"center",
+                    backdropFilter:"blur(24px)",
+                    boxShadow:"0 20px 60px rgba(0,0,0,.8)",
+                    maxWidth:"min(560px,calc(100vw - 330px))",
+                    marginLeft:150,
+                    animation:"slideUp .25s ease",
+                }}>
+                    <button onClick={() => setSelected(null)} style={{
+                        position:"absolute", top:8, right:10,
+                        background:"none", border:"none",
+                        color:"rgba(250,246,239,.35)", cursor:"pointer",
+                        fontSize:16, lineHeight:1, padding:2,
+                    }}>×</button>
 
-                <ChatPanel
-                    initialMessage={chatTrigger}
-                    onMessageSent={() => setChatTrigger(null)}
-                    onRestaurantsLoaded={handleRestaurantsLoaded}
-                    onFocusRestaurant={setFocusedResto}
-                />
-            </section>
-        </>
+                    {/* Color dot */}
+                    <div style={{
+                        width:44, height:44, borderRadius:12, flexShrink:0,
+                        background:`${markerColor(selected.kategori)}22`,
+                        border:`1px solid ${markerColor(selected.kategori)}55`,
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        fontSize:20,
+                    }}>
+                        {selected.kategori.includes("Sunset") ? "🌅" :
+                         selected.kategori.includes("Work")   ? "☕" :
+                         selected.kategori.includes("Night")  ? "🎶" :
+                         selected.kategori.includes("Family") ? "🍽️" :
+                         selected.kategori.includes("Budget") ? "🥘" :
+                         selected.kategori.includes("Roman")  ? "🕯️" : "🌿"}
+                    </div>
+
+                    <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontFamily:"Cormorant Garamond,serif", fontSize:16, fontWeight:600, color:"#faf6ef", marginBottom:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                            {selected.nama}
+                        </div>
+                        <div style={{ fontSize:11, color:"rgba(250,246,239,.45)", marginBottom:3 }}>
+                            📍 {selected.kabupaten} · ⭐{selected.rating} · {fmtN(selected.total_review)} ulasan
+                        </div>
+                        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                            <span style={{ fontSize:10, color:"#e8c46a", background:"rgba(201,151,43,.12)", borderRadius:100, padding:"2px 8px" }}>{selected.price_range}</span>
+                            <span style={{ fontSize:10, color:"rgba(250,246,239,.4)", background:"rgba(250,246,239,.06)", borderRadius:100, padding:"2px 8px" }}>{selected.best_time}</span>
+                            {selected.highlights.slice(0,2).map(h => (
+                                <span key={h} style={{ fontSize:10, color:"rgba(250,246,239,.3)", background:"rgba(250,246,239,.04)", borderRadius:100, padding:"2px 8px" }}>{h}</span>
+                            ))}
+                        </div>
+                    </div>
+
+                    <button onClick={() => {
+                        setChatTrigger(`Cerita tentang ${selected.nama} di ${selected.kabupaten} — worth it? Tips?`);
+                        setSelected(null);
+                    }} style={{
+                        padding:"9px 16px", background:"linear-gradient(135deg,#c4603a,#c9972b)",
+                        border:"none", borderRadius:20, color:"#faf6ef",
+                        fontSize:12, fontWeight:500, cursor:"pointer",
+                        fontFamily:"DM Sans,sans-serif", whiteSpace:"nowrap",
+                        flexShrink:0,
+                    }}>Ask AI ✦</button>
+                </div>
+            )}
+
+            {/* ── Active category label on map ── */}
+            {activePill && (
+                <div style={{
+                    position:"absolute", top:64, left:316, zIndex:150,
+                    background:"rgba(15,10,8,.85)", backdropFilter:"blur(12px)",
+                    border:`1px solid ${activePill.color}44`, borderRadius:100,
+                    padding:"6px 14px", display:"flex", alignItems:"center", gap:6,
+                }}>
+                    <span style={{ width:8, height:8, borderRadius:"50%", background:activePill.color, boxShadow:`0 0 8px ${activePill.color}` }}></span>
+                    <span style={{ fontSize:12, color:"#faf6ef" }}>{activePill.icon} {activePill.label}</span>
+                    <span style={{ fontSize:11, color:"rgba(250,246,239,.4)" }}>· {mapResto.length} spots</span>
+                    <button onClick={() => setActiveCat(null)} style={{
+                        background:"none", border:"none", color:"rgba(250,246,239,.4)",
+                        cursor:"pointer", fontSize:13, padding:"0 0 0 4px", lineHeight:1,
+                    }}>×</button>
+                </div>
+            )}
+
+            <ProfileOverlay isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
+
+            <ChatPanel
+                initialMessage={chatTrigger}
+                onMessageSent={() => setChatTrigger(null)}
+                onRestaurantsLoaded={onRestoLoaded}
+                onFocusRestaurant={onFocusResto}
+            />
+        </div>
     );
 }

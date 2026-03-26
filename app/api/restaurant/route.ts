@@ -21,7 +21,7 @@ export interface Restaurant {
 let _data: Restaurant[] | null = null;
 function getData(): Restaurant[] {
     if (_data) return _data;
-    const filePath = path.join(process.cwd(), "public", "data", "balibites_enriched.json");
+    const filePath = path.join(process.cwd(), "public", "balibites_enriched.json");
     _data = JSON.parse(readFileSync(filePath, "utf-8")) as Restaurant[];
     return _data;
 }
