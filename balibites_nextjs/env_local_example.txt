@@ -1,0 +1,11 @@
+# .env.local — Salin file ini jadi .env.local, JANGAN di-commit ke Git
+# Isi dengan URL Railway backend Anda
+
+# Development (lokal)
+BALIBITES_API_URL=http://localhost:8000
+
+# Production Railway (ganti dengan URL asli)
+# BALIBITES_API_URL=https://balibites-backend-production.up.railway.app
+
+# FASTAPI_URL tidak perlu diisi — BALIBITES_API_URL sudah cukup
+# (FASTAPI_URL hanya sebagai fallback untuk kompatibilitas kode lama)

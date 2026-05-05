@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Model cache (sudah di-bake di Dockerfile, tidak perlu di-commit lagi)
+# TAPI: balibites_indobert_vectors.npy dan balibites_ready_to_embed.csv
+# HARUS di-commit karena Railway butuh file ini dari repo
+# (tidak ada persistent storage di Railway free tier)
+
+# Jangan commit file environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

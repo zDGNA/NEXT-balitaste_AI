@@ -1303,3 +1303,11 @@ button:focus-visible {
   outline: 2px solid var(--gold);
   outline-offset: 2px;
 }
+
+/* Di globals.css */
+.map-canvas {
+  /* Ganti YOUR_ACCESS_TOKEN dengan token dari Jawgs Lab */
+  background-image: url('https://api.jawgs.io/styles/jawgs-sunny.json?access-token=YOUR_ACCESS_TOKEN');
+  /* Jika menggunakan tile layer langsung (Leaflet): */
+  /* https://{s}.tile.jawgs.io/jawgs-sunny/{z}/{x}/{y}{r}.png?access-token=... */
+}
