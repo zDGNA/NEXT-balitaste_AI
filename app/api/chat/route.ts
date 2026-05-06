@@ -2,7 +2,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // 🔍 Debug: Log env vars (hanya di dev)
-const FASTAPI_URL = process.env.BALIBITES_API_URL ?? process.env.FASTAPI_URL ?? "http://localhost:8000";
+// BENAR: Menggunakan nama variabel yang sesuai dengan dashboard Vercel kamu
+const FASTAPI_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 console.log("🔗 Chat proxy targeting:", FASTAPI_URL);
 
 export async function POST(req: NextRequest) {
