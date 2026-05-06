@@ -186,7 +186,7 @@ function BaliMap({ restaurants, focused, activeCategory, onMarkerClick }: {
 export default function HomePage() {
     const [splashDone, setSplashDone] = useState(false);
     const [user, setUser] = useState<AuthUser | null>(null);
-    const [activeNav, setActiveNav] = useState<"explore"|"trending"|"itinerary">("explore");
+    const [activeNav, setActiveNav] = useState<"explore">("explore");
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [profileOpen, setProfileOpen] = useState(false);
     const [activePill, setActivePill] = useState<string|null>(null);
@@ -211,7 +211,7 @@ export default function HomePage() {
         if (!user) return;
         setLoading(true);
         try {
-            const qs = new URLSearchParams({ min_rating:"4.0", min_review:"30", top_n:"40" });
+            const qs = new URLSearchParams({ min_rating:"4.0", min_review:"30", top_n:"500" });
             if (activePill) qs.set("kategori", activePill);
             if (user.location) {
                 qs.set("lat", String(user.location.latitude));
@@ -249,7 +249,7 @@ export default function HomePage() {
                             <span style={{ fontFamily:"Cormorant Garamond,serif", fontSize:17, fontWeight:600, color:"#faf6ef", letterSpacing:"0.3px" }}>Bali<span style={{ color:"#c9972b" }}>Bites</span> AI</span>
                         </div>
                         <div style={{ display:"flex", height:"100%", alignItems:"center", padding:"0 8px", gap:2 }}>
-                            {(["explore","trending","itinerary"] as const).map(t => (
+                            {(["explore"] as const).map(t => (
                                 <button key={t} onClick={() => setActiveNav(t)} style={{ padding:"0 16px", height:34, borderRadius:8, border:"none", background: activeNav===t ? "rgba(196,96,58,0.2)" : "transparent", color: activeNav===t ? "#faf6ef" : "rgba(250,246,239,0.45)", fontSize:13, cursor:"pointer", transition:"all .2s", borderBottom: activeNav===t ? "2px solid #c4603a" : "2px solid transparent", fontFamily:"DM Sans,sans-serif", letterSpacing:"0.2px" }}>{t[0].toUpperCase()+t.slice(1)}</button>
                             ))}
                         </div>
@@ -266,7 +266,7 @@ export default function HomePage() {
                     {/* ── Settings Dropdown ── */}
                     {settingsOpen && (
                         <div style={{ position:"absolute", top:60, right:12, zIndex:300, background:"rgba(18,13,10,0.97)", border:"1px solid rgba(250,246,239,0.12)", borderRadius:14, padding:"14px 0", width:220, backdropFilter:"blur(24px)", boxShadow:"0 20px 60px rgba(0,0,0,.7)", animation:"fadeUp .2s ease" }}>
-                            {[{ icon:"🗺️", label:"Map style", sub:"Dark (Jawg)" }, { icon:"🔔", label:"Notifications", sub:"On" }, { icon:"🌐", label:"Language", sub:"ID / EN" }, { icon:"📊", label:"Data export", sub:"CSV / JSON" }, { icon:"🤖", label:"AI model", sub:"Gemini 2.5 Flash" }].map(item => (
+                            {[{ icon:"🗺️", label:"Map style", sub:"Dark (Jawg)" }, { icon:"🔔", label:"Notifications", sub:"On" }].map(item => (
                                 <div key={item.label} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 16px", cursor:"pointer", transition:"background .15s" }} onMouseEnter={e => (e.currentTarget.style.background="rgba(250,246,239,0.05)")} onMouseLeave={e => (e.currentTarget.style.background="transparent")}>
                                     <span style={{ fontSize:16 }}>{item.icon}</span>
                                     <div><div style={{ fontSize:13, color:"#faf6ef" }}>{item.label}</div><div style={{ fontSize:10, color:"rgba(250,246,239,0.35)", marginTop:1 }}>{item.sub}</div></div>
