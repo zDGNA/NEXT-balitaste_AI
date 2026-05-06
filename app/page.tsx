@@ -211,7 +211,7 @@ export default function HomePage() {
         if (!user) return;
         setLoading(true);
         try {
-            const qs = new URLSearchParams({ min_rating:"4.0", min_review:"30", top_n:"500" });
+            const qs = new URLSearchParams({ min_rating:"4.0", min_review:"30", top_n:"200" });
             if (activePill) qs.set("kategori", activePill);
             if (user.location) {
                 qs.set("lat", String(user.location.latitude));
