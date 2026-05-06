@@ -282,7 +282,7 @@ export default function HomePage() {
                                 <span style={{ width:5, height:5, borderRadius:"50%", background:"#c9972b", display:"inline-block" }}></span>
                                 AI-Powered · {stats.total.toLocaleString()} Restaurants
                             </div>
-                            <h1 style={{ fontFamily:"Cormorant Garamond,serif", fontSize:32, fontWeight:300, lineHeight:1.1, color:"#faf6ef", marginBottom:10 }}>Discover your<br/>next <em style={{ color:"#e8c46a" }}>perfect</em><br/><span style={{ color:"#c4603a" }}>Bali meal</span></h1>
+                            <h1 style={{ fontFamily:"Cormorant Garamond,serif", fontSize:32, fontWeight:300, lineHeight:1.1, color:"#faf6ef", marginBottom:10 }}>Discover your<br/> <em style={{ color:"#e8c46a" }}>perfect meal</em><br/><span style={{ color:"#c4603a" }}>in Bali</span></h1>
                             <p style={{ fontSize:12, lineHeight:1.6, color:"rgba(250,246,239,.45)", fontWeight:300, marginBottom:0 }}>Hyper-personal dining powered by local expertise & AI.</p>
                         </div>
                         <div style={{ padding:"0 16px 16px", display:"flex", gap:8 }}>
