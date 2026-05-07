@@ -58,3 +58,7 @@ venv/
 *balibites_master_dataset.csv
 *balibites_ready_to_embed.csv
 *balibitesmodel.ipynb
+.npy
+.json
+balibites_data.json
+balibites_indobert_vectors.npy
