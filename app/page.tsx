@@ -42,6 +42,7 @@ function BaliMap({ restaurants, focused, activeCategory, onMarkerClick, userLoca
     const userMarkerRef = useRef<any>(null);
     const LRef          = useRef<any>(null);
     const initDone      = useRef(false);
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     useEffect(() => {
         if (initDone.current) return;
@@ -128,55 +129,97 @@ function BaliMap({ restaurants, focused, activeCategory, onMarkerClick, userLoca
         map.flyTo([userLocation.lat, userLocation.lng], 13, { duration: 1.2 });
     }, [userLocation]);
 
-    // Restaurant markers
-    useEffect(() => {
+// Restaurant markers
+useEffect(() => {
+    const L = LRef.current, map = mapRef.current;
+    if (!L || !map) return;
+
+    markersRef.current.forEach(m => map.removeLayer(m));
+    markersRef.current = [];
+
+    const valid = restaurants.filter(r =>
+        r.lat != null && r.lng != null && isFinite(r.lat) && isFinite(r.lng)
+    );
+    if (!valid.length) return;
+
+    valid.forEach(r => {
+        const dot = markerColor(r.kategori);
+        const icon = L.divIcon({
+            className: "",
+            html: `<span style="display:block;width:13px;height:13px;border-radius:50%;background:${dot};border:2.5px solid rgba(255,255,255,0.85);box-shadow:0 0 0 3px ${dot}55,0 2px 8px rgba(0,0,0,0.5);animation:lfPulse 2.5s ease infinite;"></span>`,
+            iconSize: [13, 13], iconAnchor: [6, 6],
+        });
+        
+        const marker = L.marker([r.lat, r.lng], { icon });
+        (marker as any).restoId = r.id;
+
+        marker.bindPopup(`
+            <div style="padding:10px 12px;min-width:170px;font-family:DM Sans,sans-serif">
+                <div style="font-family:'Cormorant Garamond',serif;font-size:14px;font-weight:600;color:#faf6ef;margin-bottom:3px">${r.nama}</div>
+                <div style="font-size:11px;color:rgba(250,246,239,.5);margin-bottom:5px">⭐${r.rating} · ${fmtN(r.total_review)} ulasan · ${r.price_range}</div>
+                <div style="font-size:10px;color:${dot};background:${dot}22;border-radius:100px;padding:2px 8px;display:inline-block">${r.kategori?.split("|")[0]?.trim()}</div>
+            </div>
+        `, { closeButton: false, className: "lf-popup-wrap", maxWidth: 220 });
+
+        marker.on("click", () => { onMarkerClick(r); marker.openPopup(); });
+        marker.addTo(map);
+        markersRef.current.push(marker);
+    });
+
+    if (focused) return;
+
+    if (valid.length > 1) {
+        try {
+            const bounds = L.latLngBounds(valid.map((r: Restaurant) => [r.lat!, r.lng!]));
+            if (bounds.isValid()) map.fitBounds(bounds, { padding: [80, 80], maxZoom: 14, animate: true, duration: 0.8 });
+        } catch { map.setView([-8.4095, 115.19], 10); }
+    } else if (valid.length === 1) {
+        map.flyTo([valid[0].lat!, valid[0].lng!], 15, { duration: 0.8 });
+    }
+}, [restaurants, activeCategory, onMarkerClick, focused]);
+
+
+useEffect(() => {
+    const timer = setTimeout(() => {
         const L = LRef.current, map = mapRef.current;
-        if (!L || !map) return;
-        markersRef.current.forEach(m => map.removeLayer(m));
-        markersRef.current = [];
+        
+        // FIX: Pastikan focused, lat, dan lng ADA sebelum lanjut
+        if (!L || !map || !focused || focused.lat == null || focused.lng == null) return;
 
-        const valid = restaurants.filter(r =>
-            r.lat != null && r.lng != null && isFinite(r.lat) && isFinite(r.lng) &&
-            r.lat >= -90 && r.lat <= 90 && r.lng >= -180 && r.lng <= 180
-        );
-        if (!valid.length) return;
+        // Ambil nilai koordinat yang sudah pasti tipenya number
+        const targetLat = focused.lat;
+        const targetLng = focused.lng;
 
-        valid.forEach(r => {
-            const dot = markerColor(r.kategori);
-            const icon = L.divIcon({
-                className: "",
-                html: `<span style="display:block;width:13px;height:13px;border-radius:50%;background:${dot};border:2.5px solid rgba(255,255,255,0.85);box-shadow:0 0 0 3px ${dot}55,0 2px 8px rgba(0,0,0,0.5);animation:lfPulse 2.5s ease infinite;"></span>`,
-                iconSize: [13, 13], iconAnchor: [6, 6],
-            });
-            const marker = L.marker([r.lat, r.lng], { icon });
-            marker.bindPopup(`
-                <div style="padding:10px 12px;min-width:170px;font-family:DM Sans,sans-serif">
-                    <div style="font-family:'Cormorant Garamond',serif;font-size:14px;font-weight:600;color:#faf6ef;margin-bottom:3px">${r.nama}</div>
-                    <div style="font-size:11px;color:rgba(250,246,239,.5);margin-bottom:5px">⭐${r.rating} · ${fmtN(r.total_review)} ulasan · ${r.price_range}</div>
-                    <div style="font-size:10px;color:${dot};background:${dot}22;border-radius:100px;padding:2px 8px;display:inline-block">${r.kategori?.split("|")[0]?.trim()}</div>
-                </div>
-            `, { closeButton: false, className: "lf-popup-wrap", maxWidth: 220 });
-            marker.on("click", () => { onMarkerClick(r); marker.openPopup(); });
-            marker.addTo(map);
-            markersRef.current.push(marker);
+        // 1. Zoom ke lokasi restoran
+        map.flyTo([targetLat, targetLng], 16, { 
+            duration: 0.8,
+            easeLinearity: 0.25 
         });
 
-        if (valid.length > 1) {
-            try {
-                const bounds = L.latLngBounds(valid.map((r: Restaurant) => [r.lat, r.lng]));
-                if (bounds.isValid()) map.fitBounds(bounds, { padding: [80, 80], maxZoom: 14, animate: true, duration: 0.8 });
-            } catch { map.setView([-8.4095, 115.19], 10); }
-        } else if (valid.length === 1) {
-            map.flyTo([valid[0].lat, valid[0].lng], 15, { duration: 0.8 });
-        }
-    }, [restaurants, activeCategory, onMarkerClick]);
+        // 2. Cari marker berdasarkan ID unik dan paksa buka popup
+        let found = false;
+        map.eachLayer((layer: any) => {
+            if (layer instanceof L.Marker && (layer as any).restoId === focused.id) {
+                layer.openPopup();
+                found = true;
+            }
+        });
 
-    // Fly to focused
-    useEffect(() => {
-        if (!mapRef.current || !focused) return;
-        mapRef.current.flyTo([focused.lat, focused.lng], 16, { duration: 1 });
-        markersRef.current.forEach((m, i) => { if (restaurants[i]?.id === focused.id) m.openPopup(); });
-    }, [focused]);
+        // 3. Fallback: Pakai koordinat jika ID tidak ketemu
+        if (!found) {
+            map.eachLayer((layer: any) => {
+                if (layer instanceof L.Marker) {
+                    const pos = layer.getLatLng();
+                    if (Math.abs(pos.lat - targetLat) < 0.0001 && Math.abs(pos.lng - targetLng) < 0.0001) {
+                        layer.openPopup();
+                    }
+                }
+            });
+        }
+    }, 100);
+
+    return () => clearTimeout(timer);
+}, [focused]);
 
     return <div ref={divRef} style={{ position: "absolute", inset: 0, zIndex: 0 }} />;
 }
@@ -291,6 +334,7 @@ export default function HomePage() {
     const [selected, setSelected]         = useState<Restaurant | null>(null);
     const [loading, setLoading]           = useState(false);
     const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     // ✅ Tipe userLocation konsisten: { lat, lng }
     const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -298,8 +342,16 @@ export default function HomePage() {
     useEffect(() => {
         userLocationRef.current = userLocation;
     }, [userLocation]);
-
+    
 const loadRestaurants = useCallback(async (kategori?: string | null) => {
+    // FIX: Gunakan abortControllerRef.current, bukan AbortController.current
+    if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+    }
+    
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setLoading(true);
     try {
         const qs = new URLSearchParams({ 
@@ -310,20 +362,39 @@ const loadRestaurants = useCallback(async (kategori?: string | null) => {
         
         if (kategori) qs.set("kategori", kategori);
         
-        // ✅ Akses via ref, bukan state langsung
         const loc = userLocationRef.current;
         if (loc) {
             qs.set("user_lat", String(loc.lat));
             qs.set("user_lng", String(loc.lng));
         }
         
-        const res = await fetch(`/api/restaurant?${qs}`);
-        if (res.ok) setRestaurants(await res.json());
-    } catch { }
-    finally { setLoading(false); }
+        // Masukkan signal ke dalam fetch
+        const res = await fetch(`/api/restaurant?${qs}`, { 
+            signal: controller.signal 
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            setRestaurants(data);
+        }
+    } catch (err: any) {
+        // Abaikan error jika itu karena request dibatalkan (user klik filter lain dengan cepat)
+        if (err.name !== 'AbortError') {
+            console.error("Fetch error:", err);
+        }
+    } finally {
+        // Hanya matikan loading jika request ini adalah request yang terakhir (tidak dibatalkan)
+        if (!controller.signal.aborted) {
+            setLoading(false);
+        }
+    }
 }, []);
 
-    useEffect(() => { if (splashDone && user) loadRestaurants(null); }, [splashDone, user]);
+    useEffect(() => { 
+        if (splashDone && user) {
+            loadRestaurants(activePill);
+        }
+    }, [splashDone, user, activePill, userLocation, loadRestaurants]);
     useEffect(() => { if (activePill !== null && user) loadRestaurants(activePill); }, [activePill]);
 
     const handleAuth = useCallback((u: AuthUser) => {
@@ -370,22 +441,21 @@ const loadRestaurants = useCallback(async (kategori?: string | null) => {
     const activePillData = FILTER_PILLS.find(p => p.id === activePill);
 
     // ✅ Effect: Request geolocation setelah login
-    useEffect(() => {
-        if (user && navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    // ✅ Mapping ke { lat, lng }
-                    setUserLocation({
-                        lat: pos.coords.latitude,
-                        lng: pos.coords.longitude
-                    });
-                    loadRestaurants(activePill);
-                },
-                (err) => console.log("Location permission denied:", err),
-                { enableHighAccuracy: true, timeout: 5000 }
-            );
-        }
-    }, [user, activePill, loadRestaurants]);
+ useEffect(() => {
+    if (user && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                setUserLocation({
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude
+                });
+                // loadRestaurants akan terpicu otomatis oleh useEffect di bawah
+            },
+            (err) => console.log("Location permission denied:", err),
+            { enableHighAccuracy: true, timeout: 5000 }
+        );
+    }
+}, [user]);
 
     return (
         <>
